@@ -777,7 +777,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
     def _stopresult(self, result):
         return self._signalresult(result, success='stopped')
 
-    def do_stop(self, arg):
+    def do_stop(self, arg, exitOnError=True):
         if not self.ctl.upcheck():
             return
 
