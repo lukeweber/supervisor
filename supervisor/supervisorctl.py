@@ -203,7 +203,7 @@ class Controller(cmd.Cmd):
                 error = 'error: %s, %s: file: %s line: %s' % (t, v, file, line)
                 self.output(error)
                 if not self.options.interactive:
-                    sys.exit(2)
+                    SystemExit(2)
 
     def _get_do_func(self, cmd):
         func_name = 'do_' + cmd
@@ -233,6 +233,7 @@ class Controller(cmd.Cmd):
 
     def upcheck(self):
         try:
+            e = None
             supervisor = self.get_supervisor()
             api = supervisor.getVersion() # deprecated
             from supervisor import rpcinterface
@@ -241,6 +242,8 @@ class Controller(cmd.Cmd):
                     'Sorry, this version of supervisorctl expects to '
                     'talk to a server with API version %s, but the '
                     'remote version is %s.' % (rpcinterface.API_VERSION, api))
+                if not self.options.interactive:
+                    raise SystemExit(5)
                 return False
         except xmlrpclib.Fault as e:
             if e.faultCode == xmlrpc.Faults.UNKNOWN_METHOD:
@@ -250,20 +253,28 @@ class Controller(cmd.Cmd):
                     'uses to control it.  Please check that the '
                     '[rpcinterface:supervisor] section is enabled in the '
                     'configuration file (see sample.conf).')
+                if not self.options.interactive:
+                    raise SystemExit(3)
                 return False
-            raise
-        except socket.error as why:
-            if why.args[0] == errno.ECONNREFUSED:
+        except socket.error as e:
+            if e.args[0] == errno.ECONNREFUSED:
                 self.output('%s refused connection' % self.options.serverurl)
                 if not self.options.interactive:
                     raise SystemExit(4)
                 return False
-            elif why.args[0] == errno.ENOENT:
+            elif e.args[0] == errno.ENOENT:
                 self.output('%s no such file' % self.options.serverurl)
                 if not self.options.interactive:
-                    raise SystemExit(5)
+                    raise SystemExit(1)
                 return False
-            raise
+        except Exception as e:
+            pass
+
+        if e is not None:
+            if not self.options.interactive:
+                raise SystemExit(1)
+            else:
+                raise
         return True
 
     def complete(self, text, state, line=None):

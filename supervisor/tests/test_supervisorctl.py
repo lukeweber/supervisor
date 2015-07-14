@@ -121,6 +121,17 @@ class ControllerTests(unittest.TestCase):
         controller.stdout = StringIO()
         self.assertRaises(xmlrpclib.Fault, controller.upcheck)
 
+    def test__upcheck_reraises_other_xmlrpc_faults_noninteractive(self):
+        options = DummyClientOptions()
+        from supervisor.xmlrpc import Faults
+        def f(*arg, **kw):
+            raise xmlrpclib.Fault(Faults.FAILED, '')
+        options._server.supervisor.getVersion = f
+
+        controller = self._makeOne(options)
+
+        self.assertRaises(SystemExit, controller.upcheck)
+
     def test__upcheck_catches_socket_error_ECONNREFUSED(self):
         options = DummyClientOptions()
         import socket
@@ -148,7 +159,6 @@ class ControllerTests(unittest.TestCase):
         options._server.supervisor.getVersion = raise_fault
 
         controller = self._makeOne(options)
-        controller.stdout = StringIO()
 
         self.assertRaises(SystemExit, controller.upcheck)
 
@@ -179,8 +189,6 @@ class ControllerTests(unittest.TestCase):
         options._server.supervisor.getVersion = raise_fault
 
         controller = self._makeOne(options)
-        controller.stdout = StringIO()
-
         self.assertRaises(SystemExit, controller.upcheck)
 
     def test__upcheck_reraises_other_socket_faults(self):
@@ -1425,21 +1433,21 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         result = plugin.do_add('ALREADY_ADDED')
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'ERROR: process group already active\n')
+                         'Error: process group already active\n')
 
     def test_add_bad_name(self):
         plugin = self._makeOne()
         result = plugin.do_add('BAD_NAME')
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'ERROR: no such process/group: BAD_NAME\n')
+                         'Error: no such process/group: BAD_NAME\n')
 
     def test_add_shutdown_state(self):
         plugin = self._makeOne()
         result = plugin.do_add('SHUTDOWN_STATE')
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'ERROR: shutting down\n')
+                         'Error: shutting down\n')
 
     def test_add_reraises_other_faults(self):
         plugin = self._makeOne()
@@ -1475,7 +1483,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         result = plugin.do_remove('STILL_RUNNING')
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'ERROR: process/group still running: STILL_RUNNING\n')
+                         'Error: process/group still running: STILL_RUNNING\n')
 
     def test_remove_reraises_other_faults(self):
         plugin = self._makeOne()
