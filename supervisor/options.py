@@ -1571,12 +1571,14 @@ class ClientOptions(Options):
         self.configroot = Dummy()
         self.configroot.supervisorctl = Dummy()
         self.configroot.supervisorctl.interactive = None
-        self.configroot.supervisorctl.exit_on_error = None
         self.configroot.supervisorctl.prompt = 'supervisor'
         self.configroot.supervisorctl.serverurl = None
         self.configroot.supervisorctl.username = None
         self.configroot.supervisorctl.password = None
         self.configroot.supervisorctl.history_file = None
+
+        # Set to 0 because it's only activated in realize() if not in interactive mode.
+        self.configroot.supervisorctl.exit_on_error = 0
 
         from supervisor.supervisorctl import DefaultControllerPlugin
         default_factory = ('default', DefaultControllerPlugin, {})
@@ -1586,8 +1588,6 @@ class ClientOptions(Options):
 
         self.add("interactive", "supervisorctl.interactive", "i",
                  "interactive", flag=1, default=0)
-        self.add("exit_on_error", "supervisorctl.exit_on_error", "x",
-                 "exit_on_error", flag=1, default=0)
         self.add("prompt", "supervisorctl.prompt", default="supervisor")
         self.add("serverurl", "supervisorctl.serverurl", "s:", "serverurl=",
                  url, default="http://localhost:9001")
@@ -1599,7 +1599,8 @@ class ClientOptions(Options):
         Options.realize(self, *arg, **kw)
         if not self.args:
             self.interactive = 1
-            self.exit_on_error = not self.interactive
+
+        self.exit_on_error = 0 if self.interactive else 1
 
     def read_config(self, fp):
         section = self.configroot.supervisorctl
