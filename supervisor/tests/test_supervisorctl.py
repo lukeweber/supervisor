@@ -1168,7 +1168,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         result = plugin.do_open('badname')
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'Error: url must be http:// or unix://\n')
+                         'ERROR: url must be http:// or unix://\n')
 
     def test_open_succeed(self):
         plugin = self._makeOne()
@@ -1517,7 +1517,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         result = plugin.do_add('ALREADY_ADDED')
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'Error: process group already active\n')
+                         'ERROR: process group already active\n')
 
     def test_add_bad_name(self):
         plugin = self._makeOne()
@@ -1563,7 +1563,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         result = plugin.do_remove('BAD_NAME')
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'Error: no such process/group: BAD_NAME\n')
+                         'ERROR: no such process/group: BAD_NAME\n')
 
     def test_remove_still_running(self):
         plugin = self._makeOne()
@@ -1572,7 +1572,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         result = plugin.do_remove('STILL_RUNNING')
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'Error: process/group still running: STILL_RUNNING\n')
+                         'ERROR: process/group still running: STILL_RUNNING\n')
 
     def test_remove_reraises_other_faults(self):
         plugin = self._makeOne()
