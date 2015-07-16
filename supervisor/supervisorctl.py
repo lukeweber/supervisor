@@ -232,7 +232,6 @@ class Controller(cmd.Cmd):
             return getattr(proxy, namespace)
 
     def upcheck(self):
-        e = None
         try:
             supervisor = self.get_supervisor()
             api = supervisor.getVersion() # deprecated
@@ -267,12 +266,16 @@ class Controller(cmd.Cmd):
                 if self.options.exit_on_error:
                     raise SystemExit(5)
                 return False
-        if e is not None:
-            if self.options.exit_on_error:
-                raise SystemExit(1)
-            else:
-                raise
+        else:
+            e = None
+        finally:
+            if e is not None:
+                if self.options.exit_on_error:
+                    raise SystemExit(1)
+                else:
+                    raise
         return True
+
 
     def complete(self, text, state, line=None):
         """Completer function that Cmd will register with readline using
