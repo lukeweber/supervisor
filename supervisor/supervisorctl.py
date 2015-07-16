@@ -232,8 +232,8 @@ class Controller(cmd.Cmd):
             return getattr(proxy, namespace)
 
     def upcheck(self):
+        e = None
         try:
-            e = None
             supervisor = self.get_supervisor()
             api = supervisor.getVersion() # deprecated
             from supervisor import rpcinterface
