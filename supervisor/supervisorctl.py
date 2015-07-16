@@ -242,7 +242,7 @@ class Controller(cmd.Cmd):
                     'Sorry, this version of supervisorctl expects to '
                     'talk to a server with API version %s, but the '
                     'remote version is %s.' % (rpcinterface.API_VERSION, api))
-                if not self.options.interactive:
+                if self.options.exit_on_error:
                     raise SystemExit(5)
                 return False
         except xmlrpclib.Fault as e:
@@ -253,25 +253,22 @@ class Controller(cmd.Cmd):
                     'uses to control it.  Please check that the '
                     '[rpcinterface:supervisor] section is enabled in the '
                     'configuration file (see sample.conf).')
-                if not self.options.interactive:
+                if self.options.exit_on_error:
                     raise SystemExit(3)
                 return False
         except socket.error as e:
             if e.args[0] == errno.ECONNREFUSED:
                 self.output('%s refused connection' % self.options.serverurl)
-                if not self.options.interactive:
+                if self.options.exit_on_error:
                     raise SystemExit(4)
                 return False
             elif e.args[0] == errno.ENOENT:
                 self.output('%s no such file' % self.options.serverurl)
-                if not self.options.interactive:
-                    raise SystemExit(1)
+                if self.options.exit_on_error:
+                    raise SystemExit(5)
                 return False
-        except Exception as e:
-            pass
-
         if e is not None:
-            if not self.options.interactive:
+            if self.options.exit_on_error:
                 raise SystemExit(1)
             else:
                 raise
@@ -527,7 +524,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                     self.handle_error(template % (name,
                                       'no such process name'))
                 else:
-                    self.handle_error(unhandled=True)
+                    self.handle_error(fatal=True)
             else:
                 self.ctl.output(output)
 
@@ -584,7 +581,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 self.handle_error(template % ('supervisord',
                                               'unknown error reading log'))
             else:
-                self.handle_error(unhandled=True)
+                self.handle_error(fatal=True)
         else:
             self.ctl.output(output)
 
@@ -682,7 +679,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                     if e.faultCode == xmlrpc.Faults.BAD_NAME:
                         self.handle_error('No such process %s' % name)
                     else:
-                        self.handle_error(unhandled=True)
+                        self.handle_error(fatal=True)
                 else:
                     self.ctl.output(str(info['pid']))
 
@@ -746,7 +743,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                             error = "%s: ERROR (no such group)" % group_name
                             self.handle_error(error)
                         else:
-                            self.handle_error(unhandled=True)
+                            self.handle_error(fatal=True)
                 else:
                     try:
                         result = supervisor.startProcess(name)
@@ -822,7 +819,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                             self.handle_error(message=error,
                                               logOnly=logOnly)
                         else:
-                            self.handle_error(unhandled=True)
+                            self.handle_error(fatal=True)
                 else:
                     try:
                         supervisor.stopProcess(name)
@@ -924,9 +921,9 @@ class DefaultControllerPlugin(ControllerPluginBase):
 
     def do_shutdown(self, arg):
         if self.ctl.options.interactive:
-           yesno = raw_input('Really shut the remote supervisord process '
-                             'down y/N? ')
-           really = yesno.lower().startswith('y')
+            yesno = raw_input('Really shut the remote supervisord process '
+                              'down y/N? ')
+            really = yesno.lower().startswith('y')
         else:
             really = 1
 
@@ -938,7 +935,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
                     self.handle_error('Error: already shutting down')
                 else:
-                    self.handle_error(unhandled=True)
+                    self.handle_error(fatal=True)
             except socket.error as e:
                 if e.args[0] == errno.ECONNREFUSED:
                     msg = 'ERROR: %s refused connection (already shut down?)'
@@ -947,7 +944,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                     msg = 'ERROR: %s no such file (already shut down?)'
                     self.handle_error(msg % self.ctl.options.serverurl)
                 else:
-                    self.handle_error(unhandled=True)
+                    self.handle_error(fatal=True)
             else:
                 self.ctl.output('Shut down')
 
@@ -969,7 +966,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
                     self.handle_error('Error: already shutting down')
                 else:
-                    self.handle_error(unhandled=True)
+                    self.handle_error(fatal=True)
             else:
                 self.ctl.output('Restarted supervisord')
 
@@ -1017,7 +1014,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
             if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
                 self.handle_error('Error: supervisor shutting down')
             else:
-                self.handle_error(unhandled=True)
+                self.handle_error(fatal=True)
         else:
             for pinfo in configinfo:
                 self.ctl.output(self._formatConfigInfo(pinfo))
@@ -1035,17 +1032,17 @@ class DefaultControllerPlugin(ControllerPluginBase):
             elif e.faultCode == xmlrpc.Faults.CANT_REREAD:
                 self.handle_error("Error: %s" % e.faultString)
             else:
-                self.handle_error(unhandled=True)
+                self.handle_error(fatal=True)
         else:
             self._formatChanges(result[0])
 
-    def handle_error(self, message=None, unhandled=False, logOnly=False):
+    def handle_error(self, message=None, fatal=False):
         if message:
             self.ctl.output(message)
-        if (not self.ctl.options.supress_exit and not self.ctl.options.interactive
-                and not logOnly):
+
+        if self.ctl.options.exit_on_error:
             raise SystemExit(2)
-        elif unhandled:
+        elif fatal:
             raise
 
     def help_reread(self):
@@ -1066,7 +1063,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 elif e.faultCode == xmlrpc.Faults.BAD_NAME:
                     self.handle_error("Error: no such process/group: %s" % name)
                 else:
-                    self.handle_error(unhandled=True)
+                    self.handle_error(fatal=True)
             else:
                 self.ctl.output("%s: added process group" % name)
 
@@ -1088,7 +1085,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 elif e.faultCode == xmlrpc.Faults.BAD_NAME:
                     self.handle_error("Error: no such process/group: %s" % name)
                 else:
-                    self.handle_error(unhandled=True)
+                    self.handle_error(fatal=True)
             else:
                 self.ctl.output("%s: removed process group" % name)
 
@@ -1108,7 +1105,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 self.handle_error('Error: already shutting down')
                 return
             else:
-                self.handle_error(unhandled=True)
+                self.handle_error(fatal=True)
 
         added, changed, removed = result[0]
         valid_gnames = set(arg.split())
