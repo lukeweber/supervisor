@@ -1248,7 +1248,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         result = plugin.do_shutdown('')
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'Error: already shutting down\n')
+                         'ERROR: already shutting down\n')
 
     def test_shutdown_reraises_other_xmlrpc_faults(self):
         plugin = self._makeOne()
@@ -1381,7 +1381,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         plugin.ctl.options._server.supervisor.reloadConfig = reloadConfig
         plugin.do_reread(None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'Error: cant\n')
+                         'ERROR: cant\n')
 
     def test_reread_shutdown_state(self):
         plugin = self._makeOne()
@@ -1391,7 +1391,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         plugin.ctl.options._server.supervisor.reloadConfig = reloadConfig
         plugin.do_reread(None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'Error: supervisor shutting down\n')
+                         'ERROR: supervisor shutting down\n')
 
     def test_reread_shutdown_state_exit_on_error(self):
         plugin = self._makeOne()
@@ -1473,7 +1473,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         result = plugin.do_avail('')
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'Error: supervisor shutting down\n')
+                         'ERROR: supervisor shutting down\n')
 
     def test_avail_reraises_other_faults(self):
         plugin = self._makeOne()
@@ -1524,14 +1524,14 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         result = plugin.do_add('BAD_NAME')
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'Error: no such process/group: BAD_NAME\n')
+                         'ERROR: no such process/group: BAD_NAME\n')
 
     def test_add_shutdown_state(self):
         plugin = self._makeOne()
         result = plugin.do_add('SHUTDOWN_STATE')
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
-                         'Error: shutting down\n')
+                         'ERROR: shutting down\n')
 
     def test_add_reraises_other_faults(self):
         plugin = self._makeOne()

@@ -785,7 +785,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
     def _stopresult(self, result):
         return self._signalresult(result, success='stopped')
 
-    def do_stop(self, arg, exitOnError=True):
+    def do_stop(self, arg):
         if not self.ctl.upcheck():
             return
 
@@ -815,9 +815,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                     except xmlrpclib.Fault as e:
                         if e.faultCode == xmlrpc.Faults.BAD_NAME:
                             error = "%s: ERROR (no such group)" % group_name
-                            logOnly = not exitOnError
-                            self.handle_error(message=error,
-                                              logOnly=logOnly)
+                            self.handle_error(message=error)
                         else:
                             self.handle_error(fatal=True)
                 else:
@@ -907,7 +905,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
             self.help_restart()
             return
 
-        self.do_stop(arg, exitOnError=False)
+        self.do_stop(arg)
         self.do_start(arg)
 
     def help_restart(self):
@@ -933,7 +931,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 supervisor.shutdown()
             except xmlrpclib.Fault as e:
                 if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
-                    self.handle_error('Error: already shutting down')
+                    self.handle_error('ERROR: already shutting down')
                 else:
                     self.handle_error(fatal=True)
             except socket.error as e:
@@ -964,7 +962,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 supervisor.restart()
             except xmlrpclib.Fault as e:
                 if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
-                    self.handle_error('Error: already shutting down')
+                    self.handle_error('ERROR: already shutting down')
                 else:
                     self.handle_error(fatal=True)
             else:
@@ -1012,7 +1010,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
             configinfo = supervisor.getAllConfigInfo()
         except xmlrpclib.Fault as e:
             if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
-                self.handle_error('Error: supervisor shutting down')
+                self.handle_error('ERROR: supervisor shutting down')
             else:
                 self.handle_error(fatal=True)
         else:
@@ -1028,9 +1026,9 @@ class DefaultControllerPlugin(ControllerPluginBase):
             result = supervisor.reloadConfig()
         except xmlrpclib.Fault as e:
             if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
-                self.handle_error('Error: supervisor shutting down')
+                self.handle_error('ERROR: supervisor shutting down')
             elif e.faultCode == xmlrpc.Faults.CANT_REREAD:
-                self.handle_error("Error: %s" % e.faultString)
+                self.handle_error("ERROR: %s" % e.faultString)
             else:
                 self.handle_error(fatal=True)
         else:
@@ -1057,11 +1055,11 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 supervisor.addProcessGroup(name)
             except xmlrpclib.Fault as e:
                 if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
-                    self.handle_error('Error: shutting down')
+                    self.handle_error('ERROR: shutting down')
                 elif e.faultCode == xmlrpc.Faults.ALREADY_ADDED:
-                    self.handle_error('Error: process group already active')
+                    self.handle_error('ERROR: process group already active')
                 elif e.faultCode == xmlrpc.Faults.BAD_NAME:
-                    self.handle_error("Error: no such process/group: %s" % name)
+                    self.handle_error("ERROR: no such process/group: %s" % name)
                 else:
                     self.handle_error(fatal=True)
             else:
@@ -1080,10 +1078,10 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 supervisor.removeProcessGroup(name)
             except xmlrpclib.Fault as e:
                 if e.faultCode == xmlrpc.Faults.STILL_RUNNING:
-                    self.handle_error('Error: process/group still running: %s'
+                    self.handle_error('ERROR: process/group still running: %s'
                                       % name)
                 elif e.faultCode == xmlrpc.Faults.BAD_NAME:
-                    self.handle_error("Error: no such process/group: %s" % name)
+                    self.handle_error("ERROR: no such process/group: %s" % name)
                 else:
                     self.handle_error(fatal=True)
             else:
@@ -1102,7 +1100,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
             result = supervisor.reloadConfig()
         except xmlrpclib.Fault as e:
             if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
-                self.handle_error('Error: already shutting down')
+                self.handle_error('ERROR: already shutting down')
                 return
             else:
                 self.handle_error(fatal=True)
@@ -1126,7 +1124,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
 
             for gname in valid_gnames:
                 if gname not in groups:
-                    self.handle_error('Error: no such group: %s' % gname)
+                    self.handle_error('ERROR: no such group: %s' % gname)
 
         for gname in removed:
             if valid_gnames and gname not in valid_gnames:
@@ -1218,7 +1216,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
         url = arg.strip()
         parts = urlparse.urlparse(url)
         if parts[0] not in ('unix', 'http'):
-            self.handle_error('Error: url must be http:// or unix://')
+            self.handle_error('ERROR: url must be http:// or unix://')
             return
         self.ctl.options.serverurl = url
         self.do_status('')
