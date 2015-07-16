@@ -117,6 +117,15 @@ class Controller(cmd.Cmd):
             self.options.plugins.append(plugin)
             plugin.name = name
 
+    def handle_error(self, message=None, fatal=False, code=2):
+        if message:
+            self.output(message)
+
+        if self.options.exit_on_error:
+            raise SystemExit(code)
+        elif fatal:
+            raise
+
     def emptyline(self):
         # We don't want a blank line to repeat the last command.
         return
@@ -172,7 +181,6 @@ class Controller(cmd.Cmd):
             return self.default(line)
         self._complete_info = None
         self.lastcmd = line
-        handle_error = self._get_do_func('handle_error')
 
         if cmd == '':
             return self.default(line)
@@ -194,16 +202,16 @@ class Controller(cmd.Cmd):
                             self.options.password = password
                             return self.onecmd(origline)
                         else:
-                            handle_error('Server requires authentication')
+                            self.handle_error('Server requires authentication')
                     else:
-                        handle_error(fatal=True)
+                        self.handle_error(fatal=True)
                 do_func(arg)
             except SystemExit:
-                handle_error(fatal=True)
+                self.handle_error(fatal=True)
             except Exception:
                 (file, fun, line), t, v, tbinfo = asyncore.compact_traceback()
                 error = 'error: %s, %s: file: %s line: %s' % (t, v, file, line)
-                handle_error(error)
+                self.handle_error(error)
 
     def _get_do_func(self, cmd):
         func_name = 'do_' + cmd
@@ -232,27 +240,26 @@ class Controller(cmd.Cmd):
             return getattr(proxy, namespace)
 
     def upcheck(self):
-        handle_error = self._get_do_func('handle_error')
         try:
             supervisor = self.get_supervisor()
             api = supervisor.getVersion() # deprecated
             from supervisor import rpcinterface
             if api != rpcinterface.API_VERSION:
-                handle_error(
+                self.handle_error(
                     'Sorry, this version of supervisorctl expects to '
                     'talk to a server with API version %s, but the '
                     'remote version is %s.' % (rpcinterface.API_VERSION, api), code=5)
                 return False
         except xmlrpclib.Fault as e:
             if e.faultCode == xmlrpc.Faults.UNKNOWN_METHOD:
-                handle_error(
+                self.handle_error(
                     'Sorry, supervisord responded but did not recognize '
                     'the supervisor namespace commands that supervisorctl '
                     'uses to control it.  Please check that the '
                     '[rpcinterface:supervisor] section is enabled in the '
                     'configuration file (see sample.conf).', code=3)
                 return False
-            handle_error(fatal=True, code=1)
+            self.handle_error(fatal=True, code=1)
         except socket.error as e:
             if e.args[0] == errno.ECONNREFUSED:
                 self.output('%s refused connection' % self.options.serverurl)
@@ -264,7 +271,7 @@ class Controller(cmd.Cmd):
                 if self.options.exit_on_error:
                     raise SystemExit(5)
                 return False
-            handle_error(fatal=True, code=1)
+            self.handle_error(fatal=True, code=1)
         return True
 
 
@@ -453,12 +460,12 @@ class DefaultControllerPlugin(ControllerPluginBase):
         args = arg.split()
 
         if len(args) < 1:
-            self.handle_error('Error: too few arguments')
+            self.ctl.handle_error('Error: too few arguments')
             self.help_tail()
             return
 
         elif len(args) > 3:
-            self.handle_error('Error: too many arguments')
+            self.ctl.handle_error('Error: too many arguments')
             self.help_tail()
             return
 
@@ -475,10 +482,10 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 name = args[0]
                 channel = args[-1].lower()
                 if channel not in ('stderr', 'stdout'):
-                    self.handle_error('Error: bad channel %r' % channel)
+                    self.ctl.handle_error('Error: bad channel %r' % channel)
                     return
             else:
-                self.handle_error('Error: tail requires process name')
+                self.ctl.handle_error('Error: tail requires process name')
                 return
 
         bytes = 1600
@@ -491,7 +498,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 try:
                     bytes = int(what)
                 except:
-                    self.handle_error('Error: bad argument %s' % modifier)
+                    self.ctl.handle_error('Error: bad argument %s' % modifier)
                     return
 
         supervisor = self.ctl.get_supervisor()
@@ -510,15 +517,15 @@ class DefaultControllerPlugin(ControllerPluginBase):
             except xmlrpclib.Fault as e:
                 template = '%s: ERROR (%s)'
                 if e.faultCode == xmlrpc.Faults.NO_FILE:
-                    self.handle_error(template % (name, 'no log file'))
+                    self.ctl.handle_error(template % (name, 'no log file'))
                 elif e.faultCode == xmlrpc.Faults.FAILED:
-                    self.handle_error(template % (name,
+                    self.ctl.handle_error(template % (name,
                                       'unknown error reading log'))
                 elif e.faultCode == xmlrpc.Faults.BAD_NAME:
-                    self.handle_error(template % (name,
+                    self.ctl.handle_error(template % (name,
                                       'no such process name'))
                 else:
-                    self.handle_error(fatal=True)
+                    self.ctl.handle_error(fatal=True)
             else:
                 self.ctl.output(output)
 
@@ -539,7 +546,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
         args = arg.split()
 
         if len(args) > 1:
-            self.handle_error('Error: too many arguments')
+            self.ctl.handle_error('Error: too many arguments')
             self.help_maintail()
             return
 
@@ -552,12 +559,12 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 try:
                     what = int(what)
                 except:
-                    self.handle_error('Error: bad argument %s' % args[0])
+                    self.ctl.handle_error('Error: bad argument %s' % args[0])
                     return
                 else:
                     bytes = what
             else:
-                self.handle_error('Error: bad argument %s' % args[0])
+                self.ctl.handle_error('Error: bad argument %s' % args[0])
                 return
 
         else:
@@ -570,12 +577,12 @@ class DefaultControllerPlugin(ControllerPluginBase):
         except xmlrpclib.Fault as e:
             template = '%s: ERROR (%s)'
             if e.faultCode == xmlrpc.Faults.NO_FILE:
-                self.handle_error(template % ('supervisord', 'no log file'))
+                self.ctl.handle_error(template % ('supervisord', 'no log file'))
             elif e.faultCode == xmlrpc.Faults.FAILED:
-                self.handle_error(template % ('supervisord',
+                self.ctl.handle_error(template % ('supervisord',
                                               'unknown error reading log'))
             else:
-                self.handle_error(fatal=True)
+                self.ctl.handle_error(fatal=True)
         else:
             self.ctl.output(output)
 
@@ -643,7 +650,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                         msg = "%s: ERROR (no such group)" % group_name
                     else:
                         msg = "%s: ERROR (no such process)" % name
-                    self.handle_error(msg)
+                    self.ctl.handle_error(msg)
         self._show_statuses(matching_infos)
 
     def help_status(self):
@@ -671,9 +678,9 @@ class DefaultControllerPlugin(ControllerPluginBase):
                     info = supervisor.getProcessInfo(name)
                 except xmlrpclib.Fault as e:
                     if e.faultCode == xmlrpc.Faults.BAD_NAME:
-                        self.handle_error('No such process %s' % name)
+                        self.ctl.handle_error('No such process %s' % name)
                     else:
-                        self.handle_error(fatal=True)
+                        self.ctl.handle_error(fatal=True)
                 else:
                     self.ctl.output(str(info['pid']))
 
@@ -713,7 +720,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
         supervisor = self.ctl.get_supervisor()
 
         if not names:
-            self.handle_error("Error: start requires a process name")
+            self.ctl.handle_error("Error: start requires a process name")
             self.help_start()
             return
 
@@ -735,9 +742,9 @@ class DefaultControllerPlugin(ControllerPluginBase):
                     except xmlrpclib.Fault as e:
                         if e.faultCode == xmlrpc.Faults.BAD_NAME:
                             error = "%s: ERROR (no such group)" % group_name
-                            self.handle_error(error)
+                            self.ctl.handle_error(error)
                         else:
-                            self.handle_error(fatal=True)
+                            self.ctl.handle_error(fatal=True)
                 else:
                     try:
                         result = supervisor.startProcess(name)
@@ -746,7 +753,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                                                    'name': process_name,
                                                    'group': group_name,
                                                    'description': e.faultString})
-                        self.handle_error(error)
+                        self.ctl.handle_error(error)
                     else:
                         name = make_namespec(group_name, process_name)
                         self.ctl.output('%s: started' % name)
@@ -787,7 +794,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
         supervisor = self.ctl.get_supervisor()
 
         if not names:
-            self.handle_error('Error: stop requires a process name')
+            self.ctl.handle_error('Error: stop requires a process name')
             self.help_stop()
             return
 
@@ -809,9 +816,9 @@ class DefaultControllerPlugin(ControllerPluginBase):
                     except xmlrpclib.Fault as e:
                         if e.faultCode == xmlrpc.Faults.BAD_NAME:
                             error = "%s: ERROR (no such group)" % group_name
-                            self.handle_error(message=error)
+                            self.ctl.handle_error(message=error)
                         else:
-                            self.handle_error(fatal=True)
+                            self.ctl.handle_error(fatal=True)
                 else:
                     try:
                         supervisor.stopProcess(name)
@@ -895,7 +902,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
         names = arg.split()
 
         if not names:
-            self.handle_error('Error: restart requires a process name')
+            self.ctl.handle_error('Error: restart requires a process name')
             self.help_restart()
             return
 
@@ -925,18 +932,18 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 supervisor.shutdown()
             except xmlrpclib.Fault as e:
                 if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
-                    self.handle_error('ERROR: already shutting down')
+                    self.ctl.handle_error('ERROR: already shutting down')
                 else:
-                    self.handle_error(fatal=True)
+                    self.ctl.handle_error(fatal=True)
             except socket.error as e:
                 if e.args[0] == errno.ECONNREFUSED:
                     msg = 'ERROR: %s refused connection (already shut down?)'
-                    self.handle_error(msg % self.ctl.options.serverurl)
+                    self.ctl.handle_error(msg % self.ctl.options.serverurl)
                 elif e.args[0] == errno.ENOENT:
                     msg = 'ERROR: %s no such file (already shut down?)'
-                    self.handle_error(msg % self.ctl.options.serverurl)
+                    self.ctl.handle_error(msg % self.ctl.options.serverurl)
                 else:
-                    self.handle_error(fatal=True)
+                    self.ctl.handle_error(fatal=True)
             else:
                 self.ctl.output('Shut down')
 
@@ -956,9 +963,9 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 supervisor.restart()
             except xmlrpclib.Fault as e:
                 if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
-                    self.handle_error('ERROR: already shutting down')
+                    self.ctl.handle_error('ERROR: already shutting down')
                 else:
-                    self.handle_error(fatal=True)
+                    self.ctl.handle_error(fatal=True)
             else:
                 self.ctl.output('Restarted supervisord')
 
@@ -1004,9 +1011,9 @@ class DefaultControllerPlugin(ControllerPluginBase):
             configinfo = supervisor.getAllConfigInfo()
         except xmlrpclib.Fault as e:
             if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
-                self.handle_error('ERROR: supervisor shutting down')
+                self.ctl.handle_error('ERROR: supervisor shutting down')
             else:
-                self.handle_error(fatal=True)
+                self.ctl.handle_error(fatal=True)
         else:
             for pinfo in configinfo:
                 self.ctl.output(self._formatConfigInfo(pinfo))
@@ -1020,11 +1027,11 @@ class DefaultControllerPlugin(ControllerPluginBase):
             result = supervisor.reloadConfig()
         except xmlrpclib.Fault as e:
             if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
-                self.handle_error('ERROR: supervisor shutting down')
+                self.ctl.handle_error('ERROR: supervisor shutting down')
             elif e.faultCode == xmlrpc.Faults.CANT_REREAD:
-                self.handle_error("ERROR: %s" % e.faultString)
+                self.ctl.handle_error("ERROR: %s" % e.faultString)
             else:
-                self.handle_error(fatal=True)
+                self.ctl.handle_error(fatal=True)
         else:
             self._formatChanges(result[0])
 
@@ -1049,13 +1056,13 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 supervisor.addProcessGroup(name)
             except xmlrpclib.Fault as e:
                 if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
-                    self.handle_error('ERROR: shutting down')
+                    self.ctl.handle_error('ERROR: shutting down')
                 elif e.faultCode == xmlrpc.Faults.ALREADY_ADDED:
-                    self.handle_error('ERROR: process group already active')
+                    self.ctl.handle_error('ERROR: process group already active')
                 elif e.faultCode == xmlrpc.Faults.BAD_NAME:
-                    self.handle_error("ERROR: no such process/group: %s" % name)
+                    self.ctl.handle_error("ERROR: no such process/group: %s" % name)
                 else:
-                    self.handle_error(fatal=True)
+                    self.ctl.handle_error(fatal=True)
             else:
                 self.ctl.output("%s: added process group" % name)
 
@@ -1072,12 +1079,12 @@ class DefaultControllerPlugin(ControllerPluginBase):
                 supervisor.removeProcessGroup(name)
             except xmlrpclib.Fault as e:
                 if e.faultCode == xmlrpc.Faults.STILL_RUNNING:
-                    self.handle_error('ERROR: process/group still running: %s'
+                    self.ctl.handle_error('ERROR: process/group still running: %s'
                                       % name)
                 elif e.faultCode == xmlrpc.Faults.BAD_NAME:
-                    self.handle_error("ERROR: no such process/group: %s" % name)
+                    self.ctl.handle_error("ERROR: no such process/group: %s" % name)
                 else:
-                    self.handle_error(fatal=True)
+                    self.ctl.handle_error(fatal=True)
             else:
                 self.ctl.output("%s: removed process group" % name)
 
@@ -1094,10 +1101,10 @@ class DefaultControllerPlugin(ControllerPluginBase):
             result = supervisor.reloadConfig()
         except xmlrpclib.Fault as e:
             if e.faultCode == xmlrpc.Faults.SHUTDOWN_STATE:
-                self.handle_error('ERROR: already shutting down')
+                self.ctl.handle_error('ERROR: already shutting down')
                 return
             else:
-                self.handle_error(fatal=True)
+                self.ctl.handle_error(fatal=True)
 
         added, changed, removed = result[0]
         valid_gnames = set(arg.split())
@@ -1118,7 +1125,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
 
             for gname in valid_gnames:
                 if gname not in groups:
-                    self.handle_error('ERROR: no such group: %s' % gname)
+                    self.ctl.handle_error('ERROR: no such group: %s' % gname)
 
         for gname in removed:
             if valid_gnames and gname not in valid_gnames:
@@ -1174,7 +1181,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
         names = arg.split()
 
         if not names:
-            self.handle_error('Error: clear requires a process name')
+            self.ctl.handle_error('Error: clear requires a process name')
             self.help_clear()
             return
 
@@ -1210,7 +1217,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
         url = arg.strip()
         parts = urlparse.urlparse(url)
         if parts[0] not in ('unix', 'http'):
-            self.handle_error('ERROR: url must be http:// or unix://')
+            self.ctl.handle_error('ERROR: url must be http:// or unix://')
             return
         self.ctl.options.serverurl = url
         self.do_status('')
@@ -1234,12 +1241,12 @@ class DefaultControllerPlugin(ControllerPluginBase):
         if not self.ctl.upcheck():
             return
         if not args:
-            self.handle_error('Error: no process name supplied')
+            self.ctl.handle_error('Error: no process name supplied')
             self.help_fg()
             return
         args = args.split()
         if len(args) > 1:
-            self.handle_error('Error: too many process names supplied')
+            self.ctl.handle_error('Error: too many process names supplied')
             return
         program = args[0]
         supervisor = self.ctl.get_supervisor()
@@ -1247,13 +1254,13 @@ class DefaultControllerPlugin(ControllerPluginBase):
             info = supervisor.getProcessInfo(program)
         except xmlrpclib.Fault as msg:
             if msg.faultCode == xmlrpc.Faults.BAD_NAME:
-                self.handle_error('Error: bad process name supplied')
+                self.ctl.handle_error('Error: bad process name supplied')
                 return
             # for any other fault
             self.ctl.output(str(msg))
             return
         if not info['state'] == states.ProcessStates.RUNNING:
-            self.handle_error('Error: process not running')
+            self.ctl.handle_error('Error: process not running')
             return
         # everything good; continue
         a = None
