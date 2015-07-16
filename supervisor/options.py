@@ -1559,12 +1559,12 @@ class ClientOptions(Options):
     positional_args_allowed = 1
 
     interactive = None
-    exit_on_error = None
     prompt = None
     serverurl = None
     username = None
     password = None
     history_file = None
+    exit_on_error = None
 
     def __init__(self):
         Options.__init__(self, require_configfile=False)

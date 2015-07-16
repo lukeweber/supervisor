@@ -91,7 +91,7 @@ class fgthread(threading.Thread):
     def localtrace(self, frame, why, arg):
         if self.killed:
             if why == 'line':
-                raise SystemExit(1)
+                raise SystemExit(0)
         return self.localtrace
 
     def kill(self):
@@ -172,6 +172,8 @@ class Controller(cmd.Cmd):
             return self.default(line)
         self._complete_info = None
         self.lastcmd = line
+        handle_error = self._get_do_func('handle_error')
+
         if cmd == '':
             return self.default(line)
         else:
@@ -192,18 +194,16 @@ class Controller(cmd.Cmd):
                             self.options.password = password
                             return self.onecmd(origline)
                         else:
-                            self.options.usage('Server requires authentication')
+                            handle_error('Server requires authentication')
                     else:
-                        raise
+                        handle_error(fatal=True)
                 do_func(arg)
             except SystemExit:
-                raise
+                handle_error(fatal=True)
             except Exception:
                 (file, fun, line), t, v, tbinfo = asyncore.compact_traceback()
                 error = 'error: %s, %s: file: %s line: %s' % (t, v, file, line)
-                self.output(error)
-                if not self.options.interactive:
-                    SystemExit(2)
+                handle_error(error)
 
     def _get_do_func(self, cmd):
         func_name = 'do_' + cmd
