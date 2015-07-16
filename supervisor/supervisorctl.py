@@ -232,29 +232,27 @@ class Controller(cmd.Cmd):
             return getattr(proxy, namespace)
 
     def upcheck(self):
+        handle_error = self._get_do_func('handle_error')
         try:
             supervisor = self.get_supervisor()
             api = supervisor.getVersion() # deprecated
             from supervisor import rpcinterface
             if api != rpcinterface.API_VERSION:
-                self.output(
+                handle_error(
                     'Sorry, this version of supervisorctl expects to '
                     'talk to a server with API version %s, but the '
-                    'remote version is %s.' % (rpcinterface.API_VERSION, api))
-                if self.options.exit_on_error:
-                    raise SystemExit(5)
+                    'remote version is %s.' % (rpcinterface.API_VERSION, api), code=5)
                 return False
         except xmlrpclib.Fault as e:
             if e.faultCode == xmlrpc.Faults.UNKNOWN_METHOD:
-                self.output(
+                handle_error(
                     'Sorry, supervisord responded but did not recognize '
                     'the supervisor namespace commands that supervisorctl '
                     'uses to control it.  Please check that the '
                     '[rpcinterface:supervisor] section is enabled in the '
-                    'configuration file (see sample.conf).')
-                if self.options.exit_on_error:
-                    raise SystemExit(3)
+                    'configuration file (see sample.conf).', code=3)
                 return False
+            handle_error(fatal=True, code=1)
         except socket.error as e:
             if e.args[0] == errno.ECONNREFUSED:
                 self.output('%s refused connection' % self.options.serverurl)
@@ -266,14 +264,7 @@ class Controller(cmd.Cmd):
                 if self.options.exit_on_error:
                     raise SystemExit(5)
                 return False
-        else:
-            e = None
-        finally:
-            if e is not None:
-                if self.options.exit_on_error:
-                    raise SystemExit(1)
-                else:
-                    raise
+            handle_error(fatal=True, code=1)
         return True
 
 
@@ -1037,12 +1028,12 @@ class DefaultControllerPlugin(ControllerPluginBase):
         else:
             self._formatChanges(result[0])
 
-    def handle_error(self, message=None, fatal=False):
+    def handle_error(self, message=None, fatal=False, code=2):
         if message:
             self.ctl.output(message)
 
         if self.ctl.options.exit_on_error:
-            raise SystemExit(2)
+            raise SystemExit(code)
         elif fatal:
             raise
 
