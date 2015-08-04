@@ -91,7 +91,7 @@ class fgthread(threading.Thread):
     def localtrace(self, frame, why, arg):
         if self.killed:
             if why == 'line':
-                raise SystemExit(0)
+                sys.exit()
         return self.localtrace
 
     def kill(self):
@@ -153,7 +153,7 @@ class Controller(cmd.Cmd):
             self.output('')
             pass
 
-    def handle_error(self, message=None, fatal=False, code=2):
+    def handle_error(self, message=None, fatal=False, code=1):
         if message:
             self.output(message)
 
@@ -273,7 +273,6 @@ class Controller(cmd.Cmd):
                 return False
             self.handle_error(fatal=True, code=1)
         return True
-
 
     def complete(self, text, state, line=None):
         """Completer function that Cmd will register with readline using
@@ -650,8 +649,13 @@ class DefaultControllerPlugin(ControllerPluginBase):
                         msg = "%s: ERROR (no such group)" % group_name
                     else:
                         msg = "%s: ERROR (no such process)" % name
-                    self.handle_error(msg)
+                    self.handle_error(msg, code=5)
         self._show_statuses(matching_infos)
+
+        if self.ctl.options.exit_on_error:
+            for info in matching_infos:
+                if info['state'] in states.STOPPED_STATES:
+                    raise SystemExit(7)
 
     def help_status(self):
         self.ctl.output("status <name>\t\tGet status for a single process")
