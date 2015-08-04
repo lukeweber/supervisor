@@ -91,7 +91,7 @@ class fgthread(threading.Thread):
     def localtrace(self, frame, why, arg):
         if self.killed:
             if why == 'line':
-                sys.exit()
+                sys.exit(0)
         return self.localtrace
 
     def kill(self):
@@ -1041,7 +1041,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
 
     #Near copy of handle_error from Controller, DummyController doesn't define handle_error so tests fail if I call
     #clt.handle_error.
-    def handle_error(self, message=None, fatal=False, code=2):
+    def handle_error(self, message=None, fatal=False, code=1):
         if message:
             self.ctl.output(message)
 
