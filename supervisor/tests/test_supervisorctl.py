@@ -2,6 +2,7 @@ import sys
 import unittest
 from supervisor.compat import StringIO
 from supervisor.compat import xmlrpclib
+from supervisor.supervisorctl import Controller
 from supervisor.tests.base import DummyRPCServer
 
 class SupervisorCtlTestCase(unittest.TestCase):
@@ -1986,7 +1987,7 @@ class DummyClientOptions:
     def getServerProxy(self):
         return self._server
 
-class DummyController:
+class DummyController(Controller):
     nohelp = 'no help on %s'
     def __init__(self, options):
         self.options = options
