@@ -44,6 +44,37 @@ from supervisor import xmlrpc
 from supervisor import states
 from supervisor import http_client
 
+class OutputBufferErrors(object):
+    def __init__(self, controller):
+        self.output = controller.output
+        self.options = controller.options
+        self.code = None
+
+    def handle_error(self, message=None, fatal=False, code=1):
+        if message:
+            self.output(message)
+
+        if self.code is None:
+            self.code = code
+        if fatal:
+            raise
+
+    def handle_xmlrpc_fault_state(self, state_handler, result):
+        code = result['status']
+        result = state_handler(result)
+        if code != xmlrpc.Faults.SUCCESS:
+            self.handle_error(message=result)
+        else:
+            self.output(result)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        if not type:
+            if self.options.exit_on_error and self.code is not None:
+                raise SystemExit(self.code)
+
 class fgthread(threading.Thread):
     """ A subclass of threading.Thread, with a kill() method.
     To be used for foreground output/error streaming.
@@ -207,7 +238,7 @@ class Controller(cmd.Cmd):
                         self.handle_error(fatal=True)
                 do_func(arg)
             except SystemExit:
-                self.handle_error(fatal=True)
+                raise
             except Exception:
                 (file, fun, line), t, v, tbinfo = asyncore.compact_traceback()
                 error = 'error: %s, %s: file: %s line: %s' % (t, v, file, line)
@@ -259,7 +290,7 @@ class Controller(cmd.Cmd):
                     '[rpcinterface:supervisor] section is enabled in the '
                     'configuration file (see sample.conf).', code=3)
                 return False
-            self.handle_error(fatal=True, code=1)
+            self.handle_error(fatal=True)
         except socket.error as e:
             if e.args[0] == errno.ECONNREFUSED:
                 self.output('%s refused connection' % self.options.serverurl)
@@ -271,7 +302,7 @@ class Controller(cmd.Cmd):
                 if self.options.exit_on_error:
                     raise SystemExit(5)
                 return False
-            self.handle_error(fatal=True, code=1)
+            self.handle_error(fatal=True)
         return True
 
     def complete(self, text, state, line=None):
@@ -626,31 +657,31 @@ class DefaultControllerPlugin(ControllerPluginBase):
         all_infos = supervisor.getAllProcessInfo()
 
         names = arg.split()
-        if not names or "all" in names:
-            matching_infos = all_infos
-        else:
-            matching_infos = []
+        with OutputBufferErrors(self.ctl) as error_buffer:
+            if not names or "all" in names:
+                matching_infos = all_infos
+            else:
+                matching_infos = []
+                for name in names:
+                    bad_name = True
+                    group_name, process_name = split_namespec(name)
 
-            for name in names:
-                bad_name = True
-                group_name, process_name = split_namespec(name)
+                    for info in all_infos:
+                        matched = info['group'] == group_name
+                        if process_name is not None:
+                            matched = matched and info['name'] == process_name
 
-                for info in all_infos:
-                    matched = info['group'] == group_name
-                    if process_name is not None:
-                        matched = matched and info['name'] == process_name
+                        if matched:
+                            bad_name = False
+                            matching_infos.append(info)
 
-                    if matched:
-                        bad_name = False
-                        matching_infos.append(info)
-
-                if bad_name:
-                    if process_name is None:
-                        msg = "%s: ERROR (no such group)" % group_name
-                    else:
-                        msg = "%s: ERROR (no such process)" % name
-                    self.handle_error(msg, code=5)
-        self._show_statuses(matching_infos)
+                    if bad_name:
+                        if process_name is None:
+                            msg = "%s: ERROR (no such group)" % group_name
+                        else:
+                            msg = "%s: ERROR (no such process)" % name
+                        error_buffer.handle_error(msg, code=5)
+            self._show_statuses(matching_infos)
 
         if self.ctl.options.exit_on_error:
             for info in matching_infos:
@@ -677,16 +708,17 @@ class DefaultControllerPlugin(ControllerPluginBase):
             for info in supervisor.getAllProcessInfo():
                 self.ctl.output(str(info['pid']))
         else:
-            for name in names:
-                try:
-                    info = supervisor.getProcessInfo(name)
-                except xmlrpclib.Fault as e:
-                    if e.faultCode == xmlrpc.Faults.BAD_NAME:
-                        self.handle_error('No such process %s' % name)
+            with OutputBufferErrors(self.ctl) as error_buffer:
+                for name in names:
+                    try:
+                        info = supervisor.getProcessInfo(name)
+                    except xmlrpclib.Fault as e:
+                        if e.faultCode == xmlrpc.Faults.BAD_NAME:
+                            error_buffer.handle_error('No such process %s' % name)
+                        else:
+                            error_buffer.handle_error(fatal=True)
                     else:
-                        self.handle_error(fatal=True)
-                else:
-                    self.ctl.output(str(info['pid']))
+                        self.ctl.output(str(info['pid']))
 
     def help_pid(self):
         self.ctl.output("pid\t\t\tGet the PID of supervisord.")
@@ -728,39 +760,37 @@ class DefaultControllerPlugin(ControllerPluginBase):
             self.help_start()
             return
 
-        if 'all' in names:
-            results = supervisor.startAllProcesses()
-            for result in results:
-                result = self._startresult(result)
-                self.ctl.output(result)
-
-        else:
-            for name in names:
-                group_name, process_name = split_namespec(name)
-                if process_name is None:
-                    try:
-                        results = supervisor.startProcessGroup(group_name)
-                        for result in results:
-                            result = self._startresult(result)
-                            self.ctl.output(result)
-                    except xmlrpclib.Fault as e:
-                        if e.faultCode == xmlrpc.Faults.BAD_NAME:
-                            error = "%s: ERROR (no such group)" % group_name
-                            self.handle_error(error)
-                        else:
-                            self.handle_error(fatal=True)
-                else:
-                    try:
-                        result = supervisor.startProcess(name)
-                    except xmlrpclib.Fault as e:
-                        error = self._startresult({'status': e.faultCode,
-                                                   'name': process_name,
-                                                   'group': group_name,
-                                                   'description': e.faultString})
-                        self.handle_error(error)
+        with OutputBufferErrors(self.ctl) as error_buffer:
+            if 'all' in names:
+                results = supervisor.startAllProcesses()
+                for result in results:
+                    error_buffer.handle_xmlrpc_fault_state(self._startresult, result)
+            else:
+                for name in names:
+                    group_name, process_name = split_namespec(name)
+                    if process_name is None:
+                        try:
+                            results = supervisor.startProcessGroup(group_name)
+                            for result in results:
+                                error_buffer.handle_xmlrpc_fault_state(self._startresult, result)
+                        except xmlrpclib.Fault as e:
+                            if e.faultCode == xmlrpc.Faults.BAD_NAME:
+                                error = "%s: ERROR (no such group)" % group_name
+                                error_buffer.handle_error(error)
+                            else:
+                                error_buffer.handle_error(fatal=True)
                     else:
-                        name = make_namespec(group_name, process_name)
-                        self.ctl.output('%s: started' % name)
+                        try:
+                            result = supervisor.startProcess(name)
+                        except xmlrpclib.Fault as e:
+                            error = self._startresult({'status': e.faultCode,
+                                                       'name': process_name,
+                                                       'group': group_name,
+                                                       'description': e.faultString})
+                            error_buffer.handle_error(error)
+                        else:
+                            name = make_namespec(group_name, process_name)
+                            self.ctl.output('%s: started' % name)
 
     def help_start(self):
         self.ctl.output("start <name>\t\tStart a process")
@@ -802,39 +832,38 @@ class DefaultControllerPlugin(ControllerPluginBase):
             self.help_stop()
             return
 
-        if 'all' in names:
-            results = supervisor.stopAllProcesses()
-            for result in results:
-                result = self._stopresult(result)
-                self.ctl.output(result)
+        with OutputBufferErrors(self.ctl) as error_buffer:
+            if 'all' in names:
+                results = supervisor.stopAllProcesses()
+                for result in results:
+                    error_buffer.handle_xmlrpc_fault_state(self._stopresult, result)
+            else:
+                for name in names:
+                    group_name, process_name = split_namespec(name)
+                    if process_name is None:
+                        try:
+                            results = supervisor.stopProcessGroup(group_name)
 
-        else:
-            for name in names:
-                group_name, process_name = split_namespec(name)
-                if process_name is None:
-                    try:
-                        results = supervisor.stopProcessGroup(group_name)
-                        for result in results:
-                            result = self._stopresult(result)
-                            self.ctl.output(result)
-                    except xmlrpclib.Fault as e:
-                        if e.faultCode == xmlrpc.Faults.BAD_NAME:
-                            error = "%s: ERROR (no such group)" % group_name
-                            self.handle_error(message=error)
-                        else:
-                            self.handle_error(fatal=True)
-                else:
-                    try:
-                        supervisor.stopProcess(name)
-                    except xmlrpclib.Fault as e:
-                        error = self._stopresult({'status': e.faultCode,
-                                                  'name': process_name,
-                                                  'group': group_name,
-                                                  'description':e.faultString})
-                        self.ctl.output(error)
+                            for result in results:
+                                error_buffer.handle_xmlrpc_fault_state(self._stopresult, result)
+                        except xmlrpclib.Fault as e:
+                            if e.faultCode == xmlrpc.Faults.BAD_NAME:
+                                error = "%s: ERROR (no such group)" % group_name
+                                error_buffer.handle_error(message=error)
+                            else:
+                                error_buffer.handle_error(fatal=True)
                     else:
-                        name = make_namespec(group_name, process_name)
-                        self.ctl.output('%s: stopped' % name)
+                        try:
+                            supervisor.stopProcess(name)
+                        except xmlrpclib.Fault as e:
+                            error = self._stopresult({'status': e.faultCode,
+                                                      'name': process_name,
+                                                      'group': group_name,
+                                                      'description':e.faultString})
+                            error_buffer.handle_error(error)
+                        else:
+                            name = make_namespec(group_name, process_name)
+                            self.ctl.output('%s: stopped' % name)
 
     def help_stop(self):
         self.ctl.output("stop <name>\t\tStop a process")
@@ -851,47 +880,47 @@ class DefaultControllerPlugin(ControllerPluginBase):
             self.ctl.output(
                 'Error: signal requires a signal name and a process name')
             self.help_signal()
+            self.handle_error()
             return
 
         sig = args[0]
         names = args[1:]
         supervisor = self.ctl.get_supervisor()
 
-        if 'all' in names:
-            results = supervisor.signalAllProcesses(sig)
-            for result in results:
-                result = self._signalresult(result)
-                self.ctl.output(result)
+        with OutputBufferErrors(self.ctl) as error_buffer:
+            if 'all' in names:
+                results = supervisor.signalAllProcesses(sig)
 
-        else:
-            for name in names:
-                group_name, process_name = split_namespec(name)
-                if process_name is None:
-                    try:
-                        results = supervisor.signalProcessGroup(
-                            group_name, sig
-                            )
-                        for result in results:
-                            result = self._signalresult(result)
-                            self.ctl.output(result)
-                    except xmlrpclib.Fault as e:
-                        if e.faultCode == xmlrpc.Faults.BAD_NAME:
-                            error = "%s: ERROR (no such group)" % group_name
-                            self.ctl.output(error)
-                        else:
-                            raise
-                else:
-                    try:
-                        supervisor.signalProcess(name, sig)
-                    except xmlrpclib.Fault as e:
-                        error = self._signalresult({'status': e.faultCode,
-                                                    'name': process_name,
-                                                    'group': group_name,
-                                                    'description':e.faultString})
-                        self.ctl.output(error)
+                for result in results:
+                    error_buffer.handle_xmlrpc_fault_state(self._signalresult, result)
+            else:
+                for name in names:
+                    group_name, process_name = split_namespec(name)
+                    if process_name is None:
+                        try:
+                            results = supervisor.signalProcessGroup(
+                                group_name, sig
+                                )
+                            for result in results:
+                                error_buffer.handle_xmlrpc_fault_state(self._signalresult, result)
+                        except xmlrpclib.Fault as e:
+                            if e.faultCode == xmlrpc.Faults.BAD_NAME:
+                                error = "%s: ERROR (no such group)" % group_name
+                                error_buffer.handle_error(error)
+                            else:
+                                raise
                     else:
-                        name = make_namespec(group_name, process_name)
-                        self.ctl.output('%s: signalled' % name)
+                        try:
+                            supervisor.signalProcess(name, sig)
+                        except xmlrpclib.Fault as e:
+                            error = self._signalresult({'status': e.faultCode,
+                                                        'name': process_name,
+                                                        'group': group_name,
+                                                        'description':e.faultString})
+                            error_buffer.handle_error(error)
+                        else:
+                            name = make_namespec(group_name, process_name)
+                            self.ctl.output('%s: signalled' % name)
 
     def help_signal(self):
         self.ctl.output("signal <signal name> <name>\t\tSignal a process")
@@ -1039,16 +1068,8 @@ class DefaultControllerPlugin(ControllerPluginBase):
         else:
             self._formatChanges(result[0])
 
-    #Near copy of handle_error from Controller, DummyController doesn't define handle_error so tests fail if I call
-    #clt.handle_error.
     def handle_error(self, message=None, fatal=False, code=1):
-        if message:
-            self.ctl.output(message)
-
-        if self.ctl.options.exit_on_error:
-            raise SystemExit(code)
-        elif fatal:
-            raise
+        self.ctl.handle_error(message=message, fatal=fatal, code=code)
 
     def help_reread(self):
         self.ctl.output("reread \t\t\tReload the daemon's configuration files")
@@ -1119,49 +1140,50 @@ class DefaultControllerPlugin(ControllerPluginBase):
         if "all" in valid_gnames:
             valid_gnames = set()
 
-        # If any gnames are specified we need to verify that they are
-        # valid in order to print a useful error message.
-        if valid_gnames:
-            groups = set()
-            for info in supervisor.getAllProcessInfo():
-                groups.add(info['group'])
-            # New gnames would not currently exist in this set so
-            # add those as well.
-            groups.update(added)
+        with OutputBufferErrors(self.ctl) as error_buffer:
+            # If any gnames are specified we need to verify that they are
+            # valid in order to print a useful error message.
+            if valid_gnames:
+                groups = set()
+                for info in supervisor.getAllProcessInfo():
+                    groups.add(info['group'])
+                # New gnames would not currently exist in this set so
+                # add those as well.
+                groups.update(added)
 
-            for gname in valid_gnames:
-                if gname not in groups:
-                    self.handle_error('ERROR: no such group: %s' % gname)
+                for gname in valid_gnames:
+                    if gname not in groups:
+                        error_buffer.handle_error('ERROR: no such group: %s' % gname)
 
-        for gname in removed:
-            if valid_gnames and gname not in valid_gnames:
-                continue
-            results = supervisor.stopProcessGroup(gname)
-            log(gname, "stopped")
+            for gname in removed:
+                if valid_gnames and gname not in valid_gnames:
+                    continue
+                results = supervisor.stopProcessGroup(gname)
+                log(gname, "stopped")
 
-            fails = [res for res in results
-                     if res['status'] == xmlrpc.Faults.FAILED]
-            if fails:
-                log(gname, "has problems; not removing")
-                continue
-            supervisor.removeProcessGroup(gname)
-            log(gname, "removed process group")
+                fails = [res for res in results
+                         if res['status'] == xmlrpc.Faults.FAILED]
+                if fails:
+                    error_buffer.handle_error("%s: %s" % (gname, "has problems; not removing"))
+                    continue
+                supervisor.removeProcessGroup(gname)
+                log(gname, "removed process group")
 
-        for gname in changed:
-            if valid_gnames and gname not in valid_gnames:
-                continue
-            supervisor.stopProcessGroup(gname)
-            log(gname, "stopped")
+            for gname in changed:
+                if valid_gnames and gname not in valid_gnames:
+                    continue
+                supervisor.stopProcessGroup(gname)
+                log(gname, "stopped")
 
-            supervisor.removeProcessGroup(gname)
-            supervisor.addProcessGroup(gname)
-            log(gname, "updated process group")
+                supervisor.removeProcessGroup(gname)
+                supervisor.addProcessGroup(gname)
+                log(gname, "updated process group")
 
-        for gname in added:
-            if valid_gnames and gname not in valid_gnames:
-                continue
-            supervisor.addProcessGroup(gname)
-            log(gname, "added process group")
+            for gname in added:
+                if valid_gnames and gname not in valid_gnames:
+                    continue
+                supervisor.addProcessGroup(gname)
+                log(gname, "added process group")
 
     def help_update(self):
         self.ctl.output("update\t\t\tReload config and add/remove as necessary")
@@ -1192,26 +1214,25 @@ class DefaultControllerPlugin(ControllerPluginBase):
             return
 
         supervisor = self.ctl.get_supervisor()
-
-        if 'all' in names:
-            results = supervisor.clearAllProcessLogs()
-            for result in results:
-                result = self._clearresult(result)
-                self.ctl.output(result)
-        else:
-            for name in names:
-                group_name, process_name = split_namespec(name)
-                try:
-                    supervisor.clearProcessLogs(name)
-                except xmlrpclib.Fault as e:
-                    error = self._clearresult({'status': e.faultCode,
-                                               'name': process_name,
-                                               'group': group_name,
-                                               'description': e.faultString})
-                    self.ctl.output(error)
-                else:
-                    name = make_namespec(group_name, process_name)
-                    self.ctl.output('%s: cleared' % name)
+        with OutputBufferErrors(self.ctl) as error_buffer:
+            if 'all' in names:
+                results = supervisor.clearAllProcessLogs()
+                for result in results:
+                    error_buffer.handle_xmlrpc_fault_state(self._clearresult, result)
+            else:
+                for name in names:
+                    group_name, process_name = split_namespec(name)
+                    try:
+                        supervisor.clearProcessLogs(name)
+                    except xmlrpclib.Fault as e:
+                        error = self._clearresult({'status': e.faultCode,
+                                                   'name': process_name,
+                                                   'group': group_name,
+                                                   'description': e.faultString})
+                        error_buffer.handle_error(error)
+                    else:
+                        name = make_namespec(group_name, process_name)
+                        self.ctl.output('%s: cleared' % name)
 
     def help_clear(self):
         self.ctl.output("clear <name>\t\tClear a process' log files.")
