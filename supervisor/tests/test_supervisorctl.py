@@ -2,7 +2,6 @@ import sys
 import unittest
 from supervisor.compat import StringIO
 from supervisor.compat import xmlrpclib
-from supervisor.supervisorctl import Controller
 from supervisor.tests.base import DummyRPCServer
 
 class SupervisorCtlTestCase(unittest.TestCase):
@@ -1987,7 +1986,7 @@ class DummyClientOptions:
     def getServerProxy(self):
         return self._server
 
-class DummyController(Controller):
+class DummyController:
     nohelp = 'no help on %s'
     def __init__(self, options):
         self.options = options
@@ -2012,6 +2011,15 @@ class DummyController(Controller):
 
     def print_topics(self, doc_headers, cmds_doc, rows, cols):
         self.topics_printed.append((doc_headers, cmds_doc, rows, cols))
+
+    def handle_error(self, message=None, fatal=False, code=1):
+        if message:
+            self.output(message)
+
+        if self.options.exit_on_error:
+            raise SystemExit(code)
+        elif fatal:
+            raise
 
 class DummyPlugin:
     def __init__(self, controller=None):
