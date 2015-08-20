@@ -658,7 +658,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                     else:
                         msg = "%s: ERROR (no such process)" % name
                     self.ctl.handle_error(msg, code=5)
-            self._show_statuses(matching_infos)
+        self._show_statuses(matching_infos)
 
         for info in matching_infos:
             if info['state'] in states.STOPPED_STATES:
