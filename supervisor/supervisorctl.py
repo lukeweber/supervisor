@@ -168,10 +168,7 @@ class Controller(cmd.Cmd):
         if self.exit_status is None:
             self.exit_status = code
         if fatal:
-            if self.options.exit_on_error:
-                raise SystemExit(1)
-            else:
-                raise
+            raise
 
     def onecmd(self, line):
         """ Override the onecmd method to:

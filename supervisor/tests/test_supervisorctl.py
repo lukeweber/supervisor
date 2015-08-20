@@ -1985,10 +1985,7 @@ class DummyController:
         if self.exit_status is None:
             self.exit_status = code
         if fatal:
-            if self.options.exit_on_error:
-                raise SystemExit(1)
-            else:
-                raise
+            raise
 
 class DummyPlugin:
     def __init__(self, controller=None):
