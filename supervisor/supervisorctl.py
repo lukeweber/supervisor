@@ -168,21 +168,23 @@ class Controller(cmd.Cmd):
         if self.exit_status is None:
             self.exit_status = code
         if fatal:
-
-            raise
+            if self.options.exit_on_error:
+                raise SystemExit(1)
+            else:
+                raise
 
     def onecmd(self, line):
+        """ Override the onecmd method to:
+          - catch and print all exceptions
+          - allow for composite commands in interactive mode (foo; bar)
+          - call 'do_foo' on plugins rather than ourself
+        """
         result = self.onecmd_run(line)
         if self.options.exit_on_error and self.exit_status is not None:
             raise SystemExit(self.exit_status)
         return result
 
     def onecmd_run(self, line):
-        """ Override the onecmd method to:
-          - catch and print all exceptions
-          - allow for composite commands in interactive mode (foo; bar)
-          - call 'do_foo' on plugins rather than ourself
-        """
         origline = line
         lines = line.split(';') # don't filter(None, line.split), as we pop
         line = lines.pop(0)
@@ -215,7 +217,7 @@ class Controller(cmd.Cmd):
                             self.output('')
                             self.options.username = username
                             self.options.password = password
-                            return self.onecmd(origline)
+                            return self.onecmd_run(origline)
                         else:
                             self.handle_error('Server requires authentication')
                     else:
@@ -627,7 +629,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
                                'desc': info['description']}
             self.ctl.output(line)
 
-    def do_status(self, arg):
+    def do_status(self, arg, supress_exit_status=False):
         if not self.ctl.upcheck():
             return
 
@@ -657,12 +659,14 @@ class DefaultControllerPlugin(ControllerPluginBase):
                         msg = "%s: ERROR (no such group)" % group_name
                     else:
                         msg = "%s: ERROR (no such process)" % name
-                    self.ctl.handle_error(msg, code=5)
+                    self.ctl.handle_error(msg, code=4)
         self._show_statuses(matching_infos)
 
-        for info in matching_infos:
-            if info['state'] in states.STOPPED_STATES:
-                self.ctl.handle_error(code=5)
+        # Special case where we consider a status call that contains a stopped status to be an error.
+        if not supress_exit_status:
+            for info in matching_infos:
+                if info['state'] in states.STOPPED_STATES:
+                    self.ctl.handle_error(code=3)
 
     def help_status(self):
         self.ctl.output("status <name>\t\tGet status for a single process")
@@ -1218,7 +1222,7 @@ class DefaultControllerPlugin(ControllerPluginBase):
             self.handle_error('ERROR: url must be http:// or unix://')
             return
         self.ctl.options.serverurl = url
-        self.do_status('')
+        self.do_status('', True)
 
     def help_open(self):
         self.ctl.output("open <url>\tConnect to a remote supervisord process.")

@@ -511,6 +511,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         self.assertEqual(result, None)
         lines = plugin.ctl.stdout.getvalue().split('\n')
         self.assertEqual(lines[0], 'Error: too few arguments')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_tail_toomanyargs(self):
         plugin = self._makeOne()
@@ -518,6 +519,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         self.assertEqual(result, None)
         lines = plugin.ctl.stdout.getvalue().split('\n')
         self.assertEqual(lines[0], 'Error: too many arguments')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_tail_f_noprocname(self):
         plugin = self._makeOne()
@@ -525,6 +527,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         self.assertEqual(result, None)
         lines = plugin.ctl.stdout.getvalue().split('\n')
         self.assertEqual(lines[0], 'Error: tail requires process name')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_tail_bad_modifier(self):
         plugin = self._makeOne()
@@ -532,6 +535,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         self.assertEqual(result, None)
         lines = plugin.ctl.stdout.getvalue().split('\n')
         self.assertEqual(lines[0], 'Error: bad argument -z')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_tail_defaults(self):
         plugin = self._makeOne()
@@ -548,6 +552,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         lines = plugin.ctl.stdout.getvalue().split('\n')
         self.assertEqual(len(lines), 2)
         self.assertEqual(lines[0], 'NO_FILE: ERROR (no log file)')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_tail_failed(self):
         plugin = self._makeOne()
@@ -556,6 +561,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         lines = plugin.ctl.stdout.getvalue().split('\n')
         self.assertEqual(len(lines), 2)
         self.assertEqual(lines[0], 'FAILED: ERROR (unknown error reading log)')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_tail_bad_name(self):
         plugin = self._makeOne()
@@ -564,6 +570,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         lines = plugin.ctl.stdout.getvalue().split('\n')
         self.assertEqual(len(lines), 2)
         self.assertEqual(lines[0], 'BAD_NAME: ERROR (no such process name)')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_tail_bytesmodifier(self):
         plugin = self._makeOne()
@@ -595,6 +602,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         self.assertEqual(result, None)
         value = plugin.ctl.stdout.getvalue().strip()
         self.assertEqual(value, "Error: bad channel 'fudge'")
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_tail_upcheck_failed(self):
         plugin = self._makeOne()
@@ -673,6 +681,25 @@ class TestDefaultControllerPlugin(unittest.TestCase):
                          ['bar', 'FATAL', 'bar description'])
         self.assertEqual(value[2].split(None, 2),
                          ['baz:baz_01', 'STOPPED', 'baz description'])
+        self.assertEqual(plugin.ctl.exit_status, 3)
+
+
+    def test_status_success(self):
+        plugin = self._makeOne()
+        result = plugin.do_status('foo')
+        self.assertEqual(result, None)
+        self.assertEqual(plugin.ctl.exit_status, None)
+        value = plugin.ctl.stdout.getvalue().split('\n')
+        self.assertEqual(value[0].split(None, 2),
+                         ['foo', 'RUNNING', 'foo description'])
+
+    def test_status_unknown_process(self):
+        plugin = self._makeOne()
+        result = plugin.do_status('unknownprogram')
+        self.assertEqual(result, None)
+        value = plugin.ctl.stdout.getvalue()
+        self.assertEqual("unknownprogram: ERROR (no such process)\n", value)
+        self.assertEqual(plugin.ctl.exit_status, 4)
 
     def test_status_all_processes_all_arg(self):
         plugin = self._makeOne()
@@ -1958,7 +1985,10 @@ class DummyController:
         if self.exit_status is None:
             self.exit_status = code
         if fatal:
-            raise
+            if self.options.exit_on_error:
+                raise SystemExit(1)
+            else:
+                raise
 
 class DummyPlugin:
     def __init__(self, controller=None):
