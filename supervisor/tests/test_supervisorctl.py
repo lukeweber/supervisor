@@ -163,7 +163,7 @@ class ControllerTests(unittest.TestCase):
 
         output = controller.stdout.getvalue()
         self.assertTrue('no such file' in output)
-        self.assertEqual(controller.exit_status, 5)
+        self.assertEqual(controller.exit_status, 7)
 
     def test__upcheck_reraises_other_socket_faults(self):
         options = DummyClientOptions()
