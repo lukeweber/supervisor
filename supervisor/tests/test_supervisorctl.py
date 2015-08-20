@@ -218,6 +218,16 @@ class ControllerTests(unittest.TestCase):
         controller.onecmd('help')
         self.assertEqual(controller._complete_info, None)
 
+    def test_onecmd_exit_with_code(self):
+        expected_code = 99
+        options = DummyClientOptions()
+        options.exit_on_error = True
+        controller = self._makeOne(options)
+        controller.stdout = StringIO()
+        controller.exit_status = expected_code
+        self.assertRaises(SystemExit, controller.onecmd, "")
+        self.assertEqual(controller.exit_status, expected_code)
+
     def test_complete_action_empty(self):
         options = DummyClientOptions()
         controller = self._makeOne(options)
