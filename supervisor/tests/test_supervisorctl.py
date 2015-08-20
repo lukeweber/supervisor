@@ -1,21 +1,11 @@
 import sys
 import unittest
+from supervisor import xmlrpc
 from supervisor.compat import StringIO
 from supervisor.compat import xmlrpclib
 from supervisor.tests.base import DummyRPCServer
 
-class SupervisorCtlTestCase(unittest.TestCase):
-    def _assertRaisesExit(self, function, code, *args):
-        try:
-            function(*args)
-        except SystemExit as e:
-            self.assertEqual(e.code, code)
-        except Exception as e:
-            self.fail("Unexpected exception: " + str(e))
-        else:
-            self.fail("No exception thrown. Excepted SystemExit")
-
-class fgthread_Tests(SupervisorCtlTestCase):
+class fgthread_Tests(unittest.TestCase):
     def _getTargetClass(self):
         from supervisor.supervisorctl import fgthread
         return fgthread
@@ -48,7 +38,12 @@ class fgthread_Tests(SupervisorCtlTestCase):
         ctl = DummyController(options)
         inst = self._makeOne(None, ctl)
         inst.killed = True
-        self._assertRaisesExit(inst.localtrace, 0, None, 'line', None)
+        try:
+            inst.localtrace(None, 'line', None)
+        except SystemExit as e:
+            self.assertEqual(e.code, 0)
+        else:
+            self.fail("No exception thrown. Excepted SystemExit")
 
     def test_localtrace_killed_not_whyline(self):
         options = DummyClientOptions()
@@ -73,7 +68,7 @@ class fgthread_Tests(SupervisorCtlTestCase):
         self.assertTrue(inst.output_handler.closed)
         self.assertTrue(inst.error_handler.closed)
 
-class ControllerTests(SupervisorCtlTestCase):
+class ControllerTests(unittest.TestCase):
     def _getTargetClass(self):
         from supervisor.supervisorctl import Controller
         return Controller
@@ -132,17 +127,7 @@ class ControllerTests(SupervisorCtlTestCase):
         controller = self._makeOne(options)
         controller.stdout = StringIO()
         self.assertRaises(xmlrpclib.Fault, controller.upcheck)
-
-    def test__upcheck_reraises_other_xmlrpc_faults_exit_on_error(self):
-        options = DummyClientOptions()
-        from supervisor.xmlrpc import Faults
-        def f(*arg, **kw):
-            raise xmlrpclib.Fault(Faults.FAILED, '')
-        options._server.supervisor.getVersion = f
-        options.exit_on_error = True
-
-        controller = self._makeOne(options)
-        self._assertRaisesExit(controller.upcheck, 1)
+        self.assertEqual(controller.exit_status, 1)
 
     def test__upcheck_catches_socket_error_ECONNREFUSED(self):
         options = DummyClientOptions()
@@ -160,18 +145,7 @@ class ControllerTests(SupervisorCtlTestCase):
 
         output = controller.stdout.getvalue()
         self.assertTrue('refused connection' in output)
-
-    def test__upcheck_catches_socket_error_ECONNREFUSED_exit_on_error(self):
-        options = DummyClientOptions()
-        import socket
-        import errno
-        def raise_fault(*arg, **kw):
-            raise socket.error(errno.ECONNREFUSED, 'nobody home')
-        options._server.supervisor.getVersion = raise_fault
-        options.exit_on_error = True
-
-        controller = self._makeOne(options)
-        self._assertRaisesExit(controller.upcheck, 4)
+        self.assertEqual(controller.exit_status, 4)
 
     def test__upcheck_catches_socket_error_ENOENT(self):
         options = DummyClientOptions()
@@ -189,18 +163,7 @@ class ControllerTests(SupervisorCtlTestCase):
 
         output = controller.stdout.getvalue()
         self.assertTrue('no such file' in output)
-
-    def test__upcheck_catches_socket_error_ENOENT_exit_on_error(self):
-        options = DummyClientOptions()
-        import socket
-        import errno
-        def raise_fault(*arg, **kw):
-            raise socket.error(errno.ENOENT, 'nobody home')
-        options._server.supervisor.getVersion = raise_fault
-        options.exit_on_error = True
-
-        controller = self._makeOne(options)
-        self._assertRaisesExit(controller.upcheck, 5)
+        self.assertEqual(controller.exit_status, 5)
 
     def test__upcheck_reraises_other_socket_faults(self):
         options = DummyClientOptions()
@@ -519,7 +482,7 @@ class TestControllerPluginBase(unittest.TestCase):
         self.assertEqual(plugin.ctl.stdout.getvalue(), 'no help on foo\n')
         self.assertEqual(len(plugin.ctl.topics_printed), 0)
 
-class TestDefaultControllerPlugin(SupervisorCtlTestCase):
+class TestDefaultControllerPlugin(unittest.TestCase):
 
     def _getTargetClass(self):
         from supervisor.supervisorctl import DefaultControllerPlugin
@@ -1270,17 +1233,7 @@ class TestDefaultControllerPlugin(SupervisorCtlTestCase):
 
         self.assertRaises(xmlrpclib.Fault,
                           plugin.do_shutdown, '')
-
-    def test_shutdown_reraises_other_xmlrpc_faults_exit_on_error(self):
-        plugin = self._makeOne()
-        from supervisor import xmlrpc
-
-        def raise_fault(*arg, **kw):
-            raise xmlrpclib.Fault(xmlrpc.Faults.CANT_REREAD, 'ouch')
-
-        plugin.ctl.options._server.supervisor.shutdown = raise_fault
-        plugin.ctl.options.exit_on_error = True
-        self._assertRaisesExit(plugin.do_shutdown, 1, '')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_shutdown_catches_socket_error_ECONNREFUSED(self):
         plugin = self._makeOne()
@@ -1296,17 +1249,7 @@ class TestDefaultControllerPlugin(SupervisorCtlTestCase):
 
         output = plugin.ctl.stdout.getvalue()
         self.assertTrue('refused connection (already shut down?)' in output)
-
-    def test_shutdown_catches_socket_error_ECONNREFUSED_exit_on_error(self):
-        plugin = self._makeOne()
-        import socket
-        import errno
-
-        def raise_fault(*arg, **kw):
-            raise socket.error(errno.ECONNREFUSED, 'nobody home')
-        plugin.ctl.options._server.supervisor.shutdown = raise_fault
-        plugin.ctl.options.exit_on_error = True
-        self._assertRaisesExit(plugin.do_shutdown, 1, '')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_shutdown_catches_socket_error_ENOENT(self):
         plugin = self._makeOne()
@@ -1322,17 +1265,7 @@ class TestDefaultControllerPlugin(SupervisorCtlTestCase):
 
         output = plugin.ctl.stdout.getvalue()
         self.assertTrue('no such file (already shut down?)' in output)
-
-    def test_shutdown_catches_socket_error_ENOENT_exit_on_error(self):
-        plugin = self._makeOne()
-        import socket
-        import errno
-
-        def raise_fault(*arg, **kw):
-            raise socket.error(errno.ENOENT, 'no file')
-        plugin.ctl.options._server.supervisor.shutdown = raise_fault
-        plugin.ctl.options.exit_on_error = True
-        self._assertRaisesExit(plugin.do_shutdown, 1, '')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_shutdown_reraises_other_socket_errors(self):
         plugin = self._makeOne()
@@ -1345,17 +1278,7 @@ class TestDefaultControllerPlugin(SupervisorCtlTestCase):
 
         self.assertRaises(socket.error,
                           plugin.do_shutdown, '')
-
-    def test_shutdown_reraises_other_socket_errors_exit_on_error(self):
-        plugin = self._makeOne()
-        import socket
-        import errno
-
-        def raise_fault(*arg, **kw):
-            raise socket.error(errno.EPERM, 'denied')
-        plugin.ctl.options._server.supervisor.shutdown = raise_fault
-        plugin.ctl.options.exit_on_error = True
-        self._assertRaisesExit(plugin.do_shutdown, 1, '')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test__formatChanges(self):
         plugin = self._makeOne()
@@ -1386,6 +1309,7 @@ class TestDefaultControllerPlugin(SupervisorCtlTestCase):
         plugin.do_reread(None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
                          'ERROR: cant\n')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_reread_shutdown_state(self):
         plugin = self._makeOne()
@@ -1396,15 +1320,7 @@ class TestDefaultControllerPlugin(SupervisorCtlTestCase):
         plugin.do_reread(None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
                          'ERROR: supervisor shutting down\n')
-
-    def test_reread_shutdown_state_exit_on_error(self):
-        plugin = self._makeOne()
-        from supervisor import xmlrpc
-        def reloadConfig(*arg, **kw):
-            raise xmlrpclib.Fault(xmlrpc.Faults.SHUTDOWN_STATE, '')
-        plugin.ctl.options._server.supervisor.reloadConfig = reloadConfig
-        plugin.ctl.options.exit_on_error = True
-        self._assertRaisesExit(plugin.do_reread, 1, None)
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_reread_reraises_other_faults(self):
         plugin = self._makeOne()
@@ -1413,15 +1329,7 @@ class TestDefaultControllerPlugin(SupervisorCtlTestCase):
             raise xmlrpclib.Fault(xmlrpc.Faults.FAILED, '')
         plugin.ctl.options._server.supervisor.reloadConfig = reloadConfig
         self.assertRaises(xmlrpclib.Fault, plugin.do_reread, '')
-
-    def test_reread_reraises_other_faults_exit_on_error(self):
-        plugin = self._makeOne()
-        from supervisor import xmlrpc
-        def reloadConfig(*arg, **kw):
-            raise xmlrpclib.Fault(xmlrpc.Faults.FAILED, '')
-        plugin.ctl.options._server.supervisor.reloadConfig = reloadConfig
-        plugin.ctl.options.exit_on_error = True
-        self._assertRaisesExit(plugin.do_reread, 1, '')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test__formatConfigInfo(self):
         info = { 'group': 'group1',
@@ -1487,17 +1395,7 @@ class TestDefaultControllerPlugin(SupervisorCtlTestCase):
         supervisor.getAllConfigInfo = getAllConfigInfo
 
         self.assertRaises(xmlrpclib.Fault, plugin.do_avail, '')
-
-    def test_avail_reraises_other_faults_exit_on_error(self):
-        plugin = self._makeOne()
-        plugin.ctl.options.exit_on_error = True
-        supervisor = plugin.ctl.options._server.supervisor
-
-        def getAllConfigInfo():
-            from supervisor import xmlrpc
-            raise xmlrpclib.Fault(xmlrpc.Faults.FAILED, '')
-        supervisor.getAllConfigInfo = getAllConfigInfo
-        self._assertRaisesExit(plugin.do_avail, 1, '')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_add_help(self):
         plugin = self._makeOne()
@@ -1536,11 +1434,7 @@ class TestDefaultControllerPlugin(SupervisorCtlTestCase):
     def test_add_reraises_other_faults(self):
         plugin = self._makeOne()
         self.assertRaises(xmlrpclib.Fault, plugin.do_add, 'FAILED')
-
-    def test_add_reraises_other_faults_exit_on_error(self):
-        plugin = self._makeOne()
-        plugin.ctl.options.exit_on_error = True
-        self._assertRaisesExit(plugin.do_add, 1, 'FAILED')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_remove_help(self):
         plugin = self._makeOne()
@@ -1577,11 +1471,7 @@ class TestDefaultControllerPlugin(SupervisorCtlTestCase):
     def test_remove_reraises_other_faults(self):
         plugin = self._makeOne()
         self.assertRaises(xmlrpclib.Fault, plugin.do_remove, 'FAILED')
-
-    def test_remove_reraises_other_faults_exit_on_error(self):
-        plugin = self._makeOne()
-        plugin.ctl.options.exit_on_error = True
-        self._assertRaisesExit(plugin.do_remove, 1, 'FAILED')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_update_help(self):
         plugin = self._makeOne()
@@ -1748,17 +1638,7 @@ class TestDefaultControllerPlugin(SupervisorCtlTestCase):
         supervisor.reloadConfig = reloadConfig
 
         self.assertRaises(xmlrpclib.Fault, plugin.do_update, '')
-
-    def test_update_reraises_other_faults_exit_on_error(self):
-        plugin = self._makeOne()
-        plugin.ctl.options.exit_on_error = True
-        supervisor = plugin.ctl.options._server.supervisor
-
-        def reloadConfig():
-            from supervisor import xmlrpc
-            raise xmlrpclib.Fault(xmlrpc.Faults.FAILED, 'FAILED')
-        supervisor.reloadConfig = reloadConfig
-        self._assertRaisesExit(plugin.do_update, 1, '')
+        self.assertEqual(plugin.ctl.exit_status, 1)
 
     def test_pid_help(self):
         plugin = self._makeOne()
@@ -1992,6 +1872,7 @@ class DummyController:
         self.options = options
         self.topics_printed = []
         self.stdout = StringIO()
+        self.exit_status = None
 
     def upcheck(self):
         return True
@@ -2012,13 +1893,20 @@ class DummyController:
     def print_topics(self, doc_headers, cmds_doc, rows, cols):
         self.topics_printed.append((doc_headers, cmds_doc, rows, cols))
 
+    def handle_xmlrpc_fault_state(self, state_handler, result):
+        code = result['status']
+        result = state_handler(result)
+        if code != xmlrpc.Faults.SUCCESS:
+            self.handle_error(message=result)
+        else:
+            self.output(result)
+
     def handle_error(self, message=None, fatal=False, code=1):
         if message:
             self.output(message)
-
-        if self.options.exit_on_error:
-            raise SystemExit(code)
-        elif fatal:
+        if self.exit_status is None:
+            self.exit_status = code
+        if fatal:
             raise
 
 class DummyPlugin:
