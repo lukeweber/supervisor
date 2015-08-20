@@ -257,6 +257,7 @@ class Controller(cmd.Cmd):
             api = supervisor.getVersion() # deprecated
             from supervisor import rpcinterface
             if api != rpcinterface.API_VERSION:
+                #Not installed code => 5
                 self.handle_error(
                     'Sorry, this version of supervisorctl expects to '
                     'talk to a server with API version %s, but the '
@@ -264,6 +265,7 @@ class Controller(cmd.Cmd):
                 return False
         except xmlrpclib.Fault as e:
             if e.faultCode == xmlrpc.Faults.UNKNOWN_METHOD:
+                #unimplemented feature code => 3
                 self.handle_error(
                     'Sorry, supervisord responded but did not recognize '
                     'the supervisor namespace commands that supervisorctl '
@@ -274,10 +276,12 @@ class Controller(cmd.Cmd):
             self.handle_error(fatal=True)
         except socket.error as e:
             if e.args[0] == errno.ECONNREFUSED:
+                #user had insufficient privilege code => 4
                 self.handle_error(message='%s refused connection' % self.options.serverurl, code=4)
                 return False
             elif e.args[0] == errno.ENOENT:
-                self.handle_error(message='%s no such file' % self.options.serverurl, code=5)
+                #program is not running => 7
+                self.handle_error(message='%s no such file' % self.options.serverurl, code=7)
                 return False
             self.handle_error(fatal=True)
         return True
@@ -627,7 +631,12 @@ class DefaultControllerPlugin(ControllerPluginBase):
             self.ctl.output(line)
 
     def do_status(self, arg, supress_exit_status=False):
+        """In case upcheck sets an error_status we sanitize it for do_status call which should only return 4
+        for this case."""
+        exit_status = self.ctl.exit_status
         if not self.ctl.upcheck():
+            if exit_status is not None:
+                self.ctl.exit_status = 4
             return
 
         supervisor = self.ctl.get_supervisor()
