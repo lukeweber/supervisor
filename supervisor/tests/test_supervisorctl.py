@@ -821,7 +821,7 @@ class TestDefaultControllerPlugin(unittest.TestCase):
         self.assertEqual(result, None)
         self.assertEqual(plugin.ctl.stdout.getvalue(),
                          'SPAWN_ERROR: ERROR (spawn error)\n')
-        self.assertEqual(plugin.ctl.exit_status, LSBInitErrorCode.GENERIC)
+        self.assertEqual(plugin.ctl.exit_status, LSBInitErrorCode.NOT_RUNNING)
 
     def test_start_abnormaltermination(self):
         plugin = self._makeOne()
