@@ -1034,6 +1034,18 @@ where specified.
 
   *Introduced*: 3.0
 
+``prsetpdeathsig``
+
+  The signal that the running process receives if the supervisor
+  parent process dies. This is a Linux only config directive and can not
+  be set on other platforms.
+
+  *Default*: None
+
+  *Required*:  No.
+
+  *Introduced*: 4.0
+
 ``[program:x]`` Section Example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
